@@ -1,4 +1,2 @@
 [config]  
-SCM_PYTHON_CACHE_NAME = requirements  
-SCM_PYTHON_CACHE_PATH = D:\home\python_packages 
 WEBSITE_RUN_FROM_PACKAGE = 1 
