@@ -53,8 +53,6 @@ def on_document_embedding(sender, **document_embedding_event):
     Response.is_encoded = True
     session.add(Response)
     session.commit()
-    os.remove(document_path )
-    
 
 @app.route('/GetUserInfo', methods=['GET'])
 @jwt_required()
@@ -341,14 +339,14 @@ def uploadDoument():
         blob_client.upload_blob(file.stream.read(), overwrite=True)
         # Specify the directory where you want to save the file
         upload_folder = 'uploads'  # Change to your desired directory
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
-        path = os.path.join(upload_folder, new_filename)
+        # if not os.path.exists(upload_folder):
+        #     os.makedirs(upload_folder)
+        # path = os.path.join(upload_folder, new_filename)
         
         Documet_Exist = session.query(Document).filter(Document.file_path == new_filename).first()
         if(Documet_Exist):
              return jsonify({'Response' :'Document Already Exist'}),409
-        file.save(path)
+        # file.save(path)
         Document_to_add = Document(title=Title,description=description,user_id = user_id,file_path=new_filename,is_encoded = False) 
         session.add(Document_to_add)
         session.commit()
@@ -357,7 +355,7 @@ def uploadDoument():
                         "status": "success", 
                         "id": Document_to_add.document_id
                     }
-        embedding_event = {"document_id" : Document_to_add.document_id , "document_path":path }
+        embedding_event = {"document_id" : Document_to_add.document_id , "document_path":new_filename }
         document_embedding_signal.send(**embedding_event)
         return jsonify(response),200
     

@@ -1,6 +1,9 @@
+import io
 from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import NLTKTextSplitter
+from App import container_client
+import fitz
 import nltk
 nltk.download('punkt')
 from App.Modals.DocumentChunks import DocumentChunks
@@ -35,18 +38,42 @@ def Embeded_Text(query:str):
     finally:
         pass
 
+
 def read_pdf(pdf_file_path):
     try:
-            text = ''
-            pdf_reader =PdfReader(pdf_file_path)
-            for i, page in enumerate(pdf_reader.pages):
-              text += page.extract_text()
+        blob_client = container_client.get_blob_client(pdf_file_path)
+        pdf_bytes = blob_client.download_blob().readall()
 
-            return text
+        # Read the PDF using PyMuPDF
+        pdf_document = fitz.open(stream=io.BytesIO(pdf_bytes))
 
-    except Exception as e:
-        print(f"Error reading PDF: {e}")
-        return None
+        text = ''
+        for i in range(len(pdf_document)):
+            page = pdf_document[i]
+            text += page.get_text()
+
+        # Close the PDF document
+        pdf_document.close()
+
+        return text
+    except Exception as e :
+         print(f"Error reading PDF: {e}")
+         return None
+        
+# def read_pdf(pdf_file_path):
+#     try:
+#             text = ''
+#             pdf_reader =PdfReader(pdf_file_path)
+#             for i, page in enumerate(pdf_reader.pages):
+#               text += page.extract_text()
+
+#             return text
+
+#     except Exception as e:
+#         print(f"Error reading PDF: {e}")
+#         return None
+
+
 def documents_to_strings(documents):
     # Initialize an empty list to store the strings
     document_strings = []
