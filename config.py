@@ -1,5 +1,5 @@
 JWT_SECRET_KEY = 'your_jwt_secret_key'
-SQLALCHEMY_DATABASE_URI = 'postgresql://mindbinders:Aspire%40123@mindbenders.postgres.database.azure.com:5432/coins'
+SQLALCHEMY_DATABASE_URI = 'postgresql://mindbinders:Aspire1234@mindbenders.postgres.database.azure.com:5432/coins'
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 FLASK_APP=".\run.py"
 JWT_ALGORITHM = "HS256"

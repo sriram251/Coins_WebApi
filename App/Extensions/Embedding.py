@@ -1,21 +1,34 @@
 import io
-from sentence_transformers import SentenceTransformer
+from langchain.embeddings import AzureOpenAIEmbeddings
 from App import container_client
 import fitz
 import nltk
+from  langchain.embeddings import AzureOpenAIEmbeddings
 nltk.download('punkt')
 from App.Modals.DocumentChunks import DocumentChunks
 def Embed_document(path,Document_id)->list[DocumentChunks]:
-    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-   
     try:
-       
-        
+        modal = AzureOpenAIEmbeddings(
+                azure_deployment="text-embedding-ada-002",
+                openai_api_version="2023-05-15",
+            )
+        chunk_size = 16
         Document = read_pdf(path)
         docs = nltk.sent_tokenize(Document)
+        num_chunks = len(docs) // chunk_size + (1 if len(docs) % chunk_size != 0 else 0)
+        embeddings = []
+        for chunk_index in range(num_chunks):
+                # Calculate the start and end indices for the current chunk
+                start_index = chunk_index * chunk_size
+                end_index = (chunk_index + 1) * chunk_size
+
+                # Extract the current chunk of items
+                current_chunk = docs[start_index:end_index]
+                embeddingschunk = modal.embed_documents(current_chunk)
+                embeddings.extend(embeddingschunk)
         #docs = text_splitter.split_text([Document])
         #doc_strings = documents_to_strings(docs)
-        embeddings = model.encode(docs).tolist()
+        
         paramerters = [DocumentChunks(document_id = Document_id,embedding =value ,content = docs[index]) for index,value in enumerate(embeddings)]
         return paramerters
     except Exception as e:
@@ -25,10 +38,12 @@ def Embed_document(path,Document_id)->list[DocumentChunks]:
         pass
     
 def Embeded_Text(query:str):
-    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-   
     try:
-        embeddings = model.encode(query)
+        embeddings = AzureOpenAIEmbeddings(
+                azure_deployment="text-embedding-ada-002",
+                openai_api_version="2023-05-15",
+            )
+        embeddings = embeddings.embed_query(query)
         return embeddings
     except Exception as e:
         raise e

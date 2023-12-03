@@ -10,7 +10,7 @@ class DocumentChunks(Base):
 
     chunk_id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey('documents.document_id',ondelete='CASCADE'), nullable=False)
-    embedding:Vector = Column(Vector(384), nullable=False)
+    embedding:Vector = Column(Vector(1536), nullable=False)
     content = Column(Text, nullable=False)
 
    
