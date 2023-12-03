@@ -8,19 +8,18 @@ from sqlalchemy import and_
 
 from App import app,session,container_client
 from flask_jwt_extended import create_access_token,jwt_required,get_jwt_identity
-from App.Extensions.OpenAI import FinancialAssistant, chat, chat_llm
+from App.Extensions.OpenAI import FinancialAssistant, chat
 from App.Modals.Budget import Budget, BudgetSchema
 from App.Modals.Expense import Expense, ExpenseSchema
 from App.Modals.ExpenseCategory import ExpenseCategory, ExpenseCategorySchema
 from App.Modals.IncomeSource import IncomeSource, IncomeSourceSchema
 
-from App.Modals.users import User_schemas, Users,User_schema
+from App.Modals.users import Users,User_schema
 from App.Modals.Documents import Document, Document_schema
 from App.Modals.DocumentChunks import DocumentChunks, DocumentChunks_schema
 
 from blinker import signal
 from App.Extensions.Embedding import Embed_document, Embeded_Text
-from langchain.schema import SystemMessage
 from langchain.prompts import PromptTemplate
 document_embedding_signal = signal('document-embedding')
 

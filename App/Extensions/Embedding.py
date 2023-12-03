@@ -1,7 +1,5 @@
 import io
-from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import NLTKTextSplitter
 from App import container_client
 import fitz
 import nltk
