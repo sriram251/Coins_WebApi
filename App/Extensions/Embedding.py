@@ -74,6 +74,7 @@ def read_pdf(pdf_file_path):
 #         return None
 
 
+
 def documents_to_strings(documents):
     # Initialize an empty list to store the strings
     document_strings = []
