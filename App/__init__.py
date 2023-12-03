@@ -1,12 +1,12 @@
 import os
 from flask import Flask
+from flask_marshmallow import Marshmallow
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base  
-from flask_marshmallow import Marshmallow
 from azure.storage.blob import BlobServiceClient
 
 
