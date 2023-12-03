@@ -61,7 +61,9 @@ def hello():
     user_id = current_token['User_id'] 
     Response = session.query(Users).filter(Users.id == user_id).one()
     return jsonify({'Response':User_schema.dump(Response)}),200
-
+@app.route('/')
+def index():
+    return jsonify({'Response': "Application is running"}),200
 @app.route('/register', methods=['POST'])
 def register():
     try:
