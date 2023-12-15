@@ -10,9 +10,13 @@ from langchain.chat_models import AzureChatOpenAI
 from langchain.agents import initialize_agent,Tool,AgentType, AgentExecutor, LLMSingleActionAgent,AgentOutputParser
 from langchain.utilities import GoogleSearchAPIWrapper
 from langchain.schema import AgentAction,AgentFinish
-from langchain.chains import LLMChain 
-from langchain.prompts import StringPromptTemplate
+from langchain.chains import LLMChain
+from langchain.chains.summarize import load_summarize_chain
+from langchain.prompts import StringPromptTemplate,PromptTemplate
 from langchain.schema import OutputParserException
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.document_loaders import PDFMinerLoader
+# from App.Extensions.Embedding import process_document
 
 class CustomOutputParser(AgentOutputParser):
 
@@ -224,3 +228,50 @@ def FinancialAssistant(Question):
     return agent_executor.run(Question)
         
     
+
+
+
+def Summarize_document(userId,documents_path):
+    api_key = os.environ.get("OPENAI_API_KEY")
+   
+    Base_url = os.environ.get("OPENAI_API_BASE")
+    loader = PDFMinerLoader(documents_path)
+    data = loader.load()
+    
+    text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+    chunk_size=1000, chunk_overlap=0
+    )
+    split_docs = text_splitter.split_documents(data)
+    llm = AzureChatOpenAI(api_key=api_key,
+                        base_url=Base_url,deployment_name="gpt-35-turbo-0301")
+    #summary = "process_document(document)"
+    prompt_template = """Write a concise summary of the following:
+        {text}
+        CONCISE SUMMARY:"""
+    prompt = PromptTemplate.from_template(prompt_template)
+
+    refine_template = (
+            "Your job is to produce a final summary of nsurace scheme Document.\n"
+            "We have provided an existing summary  of insurace scheme Document up to a certain point: {existing_answer}\n"
+            "We have the opportunity to refine the existing summary"
+            "(only if needed) with some more context below.\n"
+            "------------\n"
+            "{text}\n"
+            "------------\n"
+            "Given the new context, refine the original summary in English with correct Grammer and Complete"
+            "If the context isn't useful, return the original summary."
+        )
+    refine_prompt = PromptTemplate.from_template(refine_template)
+    
+    chain = load_summarize_chain(llm, chain_type="map_reduce", 
+                         question_prompt=prompt,
+                         refine_prompt=refine_prompt,
+                         input_key="input_documents",
+                         verbose= True,
+                         output_key="output_text")
+    result = chain({"input_documents": split_docs}, return_only_outputs=True)
+   
+    return result 
+
+
+

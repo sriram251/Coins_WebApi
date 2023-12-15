@@ -1,4 +1,5 @@
 from datetime import timedelta
+from io import BytesIO
 import os
 import time
 from typing import List
@@ -7,22 +8,25 @@ from flask import jsonify, request,Response, send_file
 from sqlalchemy import and_
 
 from App import app,session,container_client
+
 from flask_jwt_extended import create_access_token,jwt_required,get_jwt_identity
-from App.Extensions.OpenAI import FinancialAssistant, chat
+from App.Extensions.OpenAI import FinancialAssistant, Summarize_document, chat
+from App.Extensions.Embedding import Embed_Scheme, Embed_document, Embeded_Text, process_document
 from App.Modals.Budget import Budget, BudgetSchema
 from App.Modals.Expense import Expense, ExpenseSchema
 from App.Modals.ExpenseCategory import ExpenseCategory, ExpenseCategorySchema
 from App.Modals.IncomeSource import IncomeSource, IncomeSourceSchema
+from App.Modals.Insurance_scheme import InsuranceCategory, InsuranceCategorySchema, InsuranceScheme, InsuranceSchemeSchema, SchemeVector, SchemeVectorSchema
 
 from App.Modals.users import Users,User_schema
 from App.Modals.Documents import Document, Document_schema
 from App.Modals.DocumentChunks import DocumentChunks, DocumentChunks_schema
 
 from blinker import signal
-from App.Extensions.Embedding import Embed_document, Embeded_Text
 from langchain.prompts import PromptTemplate
+from multiprocessing import Process
 document_embedding_signal = signal('document-embedding')
-
+InsuranceScheme_embedding_signal = signal('InsuranceScheme-embedding')
 def InsertDocumentChunk(documnet_chink : List[DocumentChunks]):
     try:
         session.add_all(documnet_chink)
@@ -40,11 +44,24 @@ def generate_unique_filename(original_filename):
     new_filename = f"{unique_id}.{file_extension}"
     return new_filename
 
+
+@InsuranceScheme_embedding_signal.connect
+def on_InsuranceScheme_embedding(sender, **document_embedding_event):
+    
+    scheme_id = document_embedding_event.get("scheme_id")
+    document_path = document_embedding_event.get("document_path")
+    
+    Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
+    InsertDocumentChunk(Document_chunks)
+    Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
+    Response.isencoded = True
+    session.add(Response)
+    session.commit()
+
 @document_embedding_signal.connect
 def on_document_embedding(sender, **document_embedding_event):
-    print(document_embedding_event)
     document_id = document_embedding_event.get("document_id")
-    document_path = document_embedding_event.get("document_path")
+    document_path = document_embedding_event.get("SchemeDocument_path")
     
     Document_chunks = Embed_document(path=document_path,Document_id= document_id)
     InsertDocumentChunk(Document_chunks)
@@ -52,8 +69,30 @@ def on_document_embedding(sender, **document_embedding_event):
     Response.is_encoded = True
     session.add(Response)
     session.commit()
-
-
+    
+    
+def document_embedding(document_id,document_path):
+    # document_id = document_embedding_event.get("document_id")
+    # document_path = document_embedding_event.get("SchemeDocument_path")
+    print("Is embedding")
+    Document_chunks = Embed_document(path=document_path,Document_id= document_id)
+    InsertDocumentChunk(Document_chunks)
+    Response = session.query(Document).filter( Document.document_id == document_id).first()
+    Response.is_encoded = True
+    session.add(Response)
+    session.commit()
+    
+def InsuranceScheme_embedding(scheme_id,document_path):
+    
+    # scheme_id = document_embedding_event.get("scheme_id")
+    # document_path = document_embedding_event.get("document_path")
+    
+    Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
+    InsertDocumentChunk(Document_chunks)
+    Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
+    Response.isencoded = True
+    session.add(Response)
+    session.commit()
 @app.route('/GetUserInfo', methods=['GET'])
 @jwt_required()
 def hello():
@@ -115,6 +154,7 @@ def Login():
              return jsonify({"Response":"Email or password is incorrect"}),401 
             
     except Exception as e:
+        session.rollback() 
         print(e)
         return jsonify({'Response': "Something went wrong"}),500
     
@@ -234,7 +274,175 @@ def get_all_ExpenseCategorys():
     result = Budget_schema.dump(Budgets)
     return jsonify({'Response': result}), 200
 
+@app.route('/Get_InsuranceScheme', methods=['GET'])
+@jwt_required()
+def get_all_InsuranceScheme():
+    insurance_schemes = session.query(InsuranceScheme).all()
+    insurance_scheme = InsuranceSchemeSchema(many=True)
+    result = insurance_scheme.dump(insurance_schemes)
+    return jsonify({'Response': result}), 200
 
+@app.route('/Get_InsuranceCategory', methods=['GET'])
+@jwt_required()
+def Get_InsuranceCategory():
+    current_token = get_jwt_identity()
+    user_id = current_token['User_id'] 
+    Insurance_Category = session.query(InsuranceCategory).all()
+    InsuranceCategory.description,
+    InsuranceCategory.category_name,
+    InsuranceCategory.category_id
+    Insurance_Category_schema = InsuranceCategorySchema(many=True)
+    result = Insurance_Category_schema.dump(Insurance_Category)
+    result = [{"category_id": original_data["category_id"],
+    "category_name": original_data["category_name"],
+    "description": original_data["description"],
+    } for item,original_data in enumerate(result)]
+    return jsonify({'Response': result}), 200
+@app.route('/add_insurance_scheme', methods=['POST'])
+@jwt_required()
+def add_insurance_scheme():
+    try:
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        if 'file' not in request.files:
+            return "No file part"
+
+        file = request.files['file']
+        scheme_name = request.form.get('scheme_name')
+        description = request.form.get('description')
+        coverage_amount  = request.form.get('coverage_amount')
+        premium_amount  = request.form.get('premium_amount')
+        start_date = request.form.get('start_date')
+        end_date  = request.form.get('end_date')
+        category_id  = request.form.get('category_id')
+        
+        if file.filename == '':
+            return "No selected file"
+
+    
+        if file:
+            new_filename = generate_unique_filename(file.filename)
+
+            blob_client = container_client.get_blob_client(new_filename)
+
+            # Upload file to Azure Storage with the unique filename
+            blob_client.upload_blob(file.stream.read(), overwrite=True)
+            # Specify the directory where you want to save the file
+            upload_folder = 'uploads'  # Change to your desired directory
+
+            # if not os.path.exists(upload_folder):
+            #     os.makedirs(upload_folder)
+            # path = os.path.join(upload_folder, new_filename)
+        
+            Documet_Exist = session.query(InsuranceScheme).filter(InsuranceScheme.document_path == new_filename).first()
+            if(Documet_Exist):
+                return jsonify({'Response' :'Scheme Already Exist'}),409
+
+            # file.save(path)
+            Embeded_description = Embeded_Text(description)
+            InsuranceScheme_to_add = InsuranceScheme(scheme_name=scheme_name,description=description,category_id= category_id,coverage_amount=coverage_amount,end_date=start_date,premium_amount=premium_amount,start_date=end_date,document_path=new_filename,description_vector_data=Embeded_description) 
+            session.add(InsuranceScheme_to_add)
+        
+            session.commit()
+            response = {
+                            "data": "Insurance Scheme is Added successfully",
+                            "status": "success", 
+                            "id": InsuranceScheme_to_add.scheme_id
+                        }
+
+            # embedding_event = {"scheme_id" : InsuranceScheme_to_add.scheme_id , "document_path":new_filename }
+            # InsuranceScheme_embedding_signal.send(**embedding_event)
+            # 
+            bidding_cb = Process(target=InsuranceScheme_embedding, args=(InsuranceScheme_to_add.scheme_id, new_filename))
+            bidding_cb.start()
+            
+            return jsonify(response),200
+    except Exception as ex:
+        session.rollback()
+        return jsonify({"response":ex}),200
+    
+@app.route('/Get_insurance_scheme/<int:scheme_id>', methods=['GET'])
+@jwt_required()
+def Get_insurance_scheme(scheme_id):
+    try:
+        insurance_scheme = session.query(InsuranceScheme).get(scheme_id)
+        insurance_schema = InsuranceSchemeSchema()
+        result = insurance_schema.dump(insurance_scheme)
+        return jsonify(result), 200
+
+    except Exception as ex:
+        session.rollback()
+        return jsonify({"response": str(ex)}), 500
+
+@app.route('/edit_insurance_scheme/<int:scheme_id>', methods=['PUT'])
+@jwt_required()
+def edit_insurance_scheme(scheme_id):
+    try:
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id']
+
+        # Fetch the insurance scheme to edit
+        insurance_scheme = session.query(InsuranceScheme).get(scheme_id)
+        if not insurance_scheme:
+            return jsonify({'response': 'Scheme not found'}), 404
+
+        # Check if the user has the right to edit this scheme
+        if insurance_scheme.user_id != user_id:
+            return jsonify({'response': 'Unauthorized'}), 401
+
+        # Check if a new file is provided
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename != '':
+                # Update the document path if a new file is provided
+                new_filename = generate_unique_filename(file.filename)
+                blob_client = container_client.get_blob_client(new_filename)
+                blob_client.upload_blob(file.stream.read(), overwrite=True)
+                insurance_scheme.document_path = new_filename
+
+        # Update other scheme attributes based on the request form data
+        insurance_scheme.scheme_name = request.form.get('scheme_name', insurance_scheme.scheme_name)
+        insurance_scheme.description = request.form.get('description', insurance_scheme.description)
+        insurance_scheme.coverage_amount = request.form.get('coverage_amount', insurance_scheme.coverage_amount)
+        insurance_scheme.premium_amount = request.form.get('premium_amount', insurance_scheme.premium_amount)
+        insurance_scheme.start_date = request.form.get('start_date', insurance_scheme.start_date)
+        insurance_scheme.end_date = request.form.get('end_date', insurance_scheme.end_date)
+        insurance_scheme.category_id = request.form.get('category_id', insurance_scheme.category_id)
+
+        # Commit the changes to the database
+        session.commit()
+
+        response = {
+            "data": "Insurance Scheme is updated successfully",
+            "status": "success",
+            "id": insurance_scheme.scheme_id
+        }
+
+        # Trigger the embedding signal for the updated scheme
+        
+        return jsonify(response), 200
+
+    except Exception as ex:
+        session.rollback()
+        return jsonify({"response": str(ex)}), 500
+
+@app.route('/DeleteInsuranceschemes/<int:scheme_id>', methods=['DELETE'])
+@jwt_required()
+def DeleteInsuranceschemes(scheme_id):
+    current_token = get_jwt_identity()
+    user_id = current_token['User_id']
+    
+    Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == scheme_id).first()
+    
+    if(Response):
+        document_client =  container_client.get_blob_client(Response.document_path)
+        session.delete(Response)
+        session.commit()
+        if(document_client):
+            document_client.delete_blob()
+        return jsonify({"Response": "scheme removed successfully" }),200
+    else:
+        return jsonify({"Response": "scheme Not found" }),404
 @app.route('/add_Expense', methods=['POST'])
 @jwt_required()
 def add_Expense():
@@ -295,6 +503,28 @@ def QueryDoucment():
     return jsonify({"Response":Records}),200
     
 
+@app.route('/downloadScheme/<schemeId>')
+def downloadScheme(schemeId):
+    Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == schemeId).first()
+    filename = Response.document_path
+    blob_client = container_client.get_blob_client(filename)
+    blob_content = blob_client.download_blob().readall()
+
+# Wrap the content in BytesIO to make it a file-like object
+    file_like = BytesIO(blob_content)
+
+    # Specify the content type based on the file extension
+    content_type = "application/octet-stream"
+    if "." in filename:
+        _, extension = filename.rsplit(".", 1)
+        content_type = f"application/{extension}"
+
+    return send_file(
+        file_like,
+        mimetype=content_type,
+        as_attachment=True,
+        download_name=filename
+    )
 
 @app.route('/download/<documentID>')
 def download(documentID):
@@ -356,13 +586,15 @@ def uploadDoument():
         session.add(Document_to_add)
         session.commit()
         response = {
-                        "data": "File uploaded successfully with description: " + description,
+                        "data": "File uploaded successfully.. Encoding is in progress",
                         "status": "success", 
                         "id": Document_to_add.document_id
                     }
 
-        embedding_event = {"document_id" : Document_to_add.document_id , "document_path":new_filename }
-        document_embedding_signal.send(**embedding_event)
+        #embedding_event = {"document_id" : Document_to_add.document_id , "document_path":new_filename }
+        bidding_cb = Process(target=document_embedding, args=(Document_to_add.document_id, new_filename))
+        bidding_cb.start()
+        #document_embedding_signal.send(**embedding_event)
         return jsonify(response),200
     
     
@@ -386,12 +618,53 @@ def DeleteDocument(Document_id):
     Response = session.query(Document).filter(Document.user_id == user_id and Document.document_id == Document_id).first()
     
     if(Response):
+        document_client =  container_client.get_blob_client(Response.file_path)
         session.delete(Response)
         session.commit()
+        document_client.delete_blob()
         return jsonify({"Response": "File removed successfully" }),200
     else:
         return jsonify({"Response": "File Not found" }),404
 
+@app.route('/QAInsuranceScheme', methods=['POST'])
+@jwt_required()
+def AskQuestionAboutInsuranceScheme():
+    try:
+        SchemeId = request.json.get('SchemeId', None)
+        Question = request.json.get('Question', None)
+        Query_vector = Embeded_Text(Question)
+        #Response =session.query().filter(InsuranceScheme.description_vector_data.cosine_distance(Query_vector) <= 0.8).order_by(DocumentChunks.embedding.cosine_distance(Query_vector)).limit(30).all()
+        #Scheme_id = [item.get('scheme_id') for item in Response]
+        SchemeContent =session.query(SchemeVector.content).filter(and_(SchemeVector.vector_data.cosine_distance(Query_vector) <= 0.8,SchemeVector.scheme_id == SchemeId)).order_by(SchemeVector.vector_data.cosine_distance(Query_vector)).limit(30).all()
+        
+        insurance_scheme = SchemeVectorSchema(many=True)
+        result = insurance_scheme.dump(SchemeContent)
+        
+        Records = [ item.get("content") for item in result]
+        Records = "".join(Records)
+        
+        qa_template = """Context information is below from a Insurance Scheme document.
+                            ---------------------
+                            {context}
+                            ---------------------
+                            you are a world class Insurance assistant. 
+                            Given the context information and not prior knowledge, 
+                            Begin! Remember to speak as a Insurance assistant to the customer 
+                            with no perior knowledge in insurace  background when giving your final answer.
+                            If the question not related to the context you can Answer as question is not related to Insurance Scheme.
+                            If need user asked as list or points you should provide it as points. like
+                            1.)...
+                            2.)..
+                            .
+                            answer the question: {question}
+                            Answer:
+                      """
+        prompt_template = PromptTemplate.from_template(qa_template)
+        Result = chat({"context":Records,"question":Question},prompt_template)    
+        return jsonify({"schemes":SchemeId,"Question":Question,"Response":Result}),200
+    except Exception as e:
+        session.rollback()
+        return jsonify({"Response":e}),500
 @app.route('/QAdocument', methods=['POST'])
 @jwt_required()
 def AskQuestionAboutDocument():
@@ -438,10 +711,72 @@ def stream_data():
         return jsonify({"Response":FinancialAssistant(Question)}),200   
             # Create a streaming response with 'text/stream' content type
     return jsonify({"Response":"Question is not present"}),404
-    
-    
 
 
+@app.route('/SummarizeDocument', methods=['POST'])
+@jwt_required()
+def SummarizeDocument():
+    current_token = get_jwt_identity()
+    user_id = current_token['User_id'] 
+    if 'file' not in request.files:
+        return "No file part"
+
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file"
+
+   
+    if file:
+        upload_folder = "../../uploads/"
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+
+        file_path = os.path.join(upload_folder, file.filename)
+        file.save(file_path)
+        #DocStrings = process_document(file_path)
+        
+       
+        result = Summarize_document(user_id,file_path)
+        os.remove(file_path)
+        return jsonify(result),200   
+    
+@app.route('/InsuranceAssistant', methods=['POST'])
+def InsuranceAssistant():
+          try:
+                Question = request.json.get('Question', None)
+                Query_vector = Embeded_Text(Question)
+                SchemeContent =session.query(SchemeVector).filter(SchemeVector.vector_data.cosine_distance(Query_vector) <= 0.8).order_by(SchemeVector.vector_data.cosine_distance(Query_vector)).limit(30).all()
+                
+                insurance_scheme = SchemeVectorSchema(many=True)
+                result = insurance_scheme.dump(SchemeContent)
+                Scheme_ids = [item.get("scheme_id") for item in result]
+                Scheme_ids = set(Scheme_ids)
+                Scheme_ids = list(Scheme_ids)
+                Records = [ item.get("content") for item in result]
+                Records = "".join(Records)
+                
+                qa_template = """Context information is below from a Insurance Scheme document.
+                                    ---------------------
+                                    {context}
+                                    ---------------------
+                                    you are a world class Insurance assistant. 
+                                    Given the context information and not prior knowledge, 
+                                    Begin! Remember to speak as a Insurance assistant to the customer 
+                                    with no perior knowledge in insurace  background when giving your final answer.
+                                    If the question not related to the context you can Answer as question is not related to Insurance Scheme.
+                                    If need user asked as list or points you should provide it as points. like
+                                    1.)...
+                                    2.)..
+                                    .
+                                    answer the question: {question}
+                                    Answer:
+                              """
+                prompt_template = PromptTemplate.from_template(qa_template)
+                Result = chat({"context":Records,"question":Question},prompt_template)    
+                return jsonify({"schemes":Scheme_ids ,"Question":Question,"Response":Result}),200
+          except Exception as e:
+                session.rollback()
+                return jsonify({"Response":e}),500    
 
 
         

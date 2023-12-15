@@ -27,8 +27,7 @@ os.environ["OPENAI_API_KEY"] ="ec509f23a3e94f9a8c776b65a2beba3a"
 os.environ["blob_account_name"] ="mindbenders"
 os.environ["blob_account_key"] ="+M2Z119kiTM6D5arCnUd2+q16rqFBBcwlq33D8zhg9DeH7uccXMzWhUWpRvDNWT5rLGwQzAiLwOU+AStes98Yg=="
 os.environ["blob_container_name"] ="userdouments"
-
-
+os.environ["Dbconnection"] ="postgresql://mindbinders:Aspire1234@mindbenders.postgres.database.azure.com:5432/coins"
 bcrypt = Bcrypt(app=app)
 Jwt = JWTManager(app=app)
 
