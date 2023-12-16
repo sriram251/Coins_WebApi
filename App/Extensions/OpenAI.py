@@ -263,7 +263,7 @@ def Summarize_document(userId,documents_path):
         )
     refine_prompt = PromptTemplate.from_template(refine_template)
     
-    chain = load_summarize_chain(llm, chain_type="map_reduce", 
+    chain = load_summarize_chain(llm, chain_type="refine", 
                          question_prompt=prompt,
                          refine_prompt=refine_prompt,
                          input_key="input_documents",

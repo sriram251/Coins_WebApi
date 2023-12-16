@@ -7,7 +7,7 @@ import uuid
 from flask import jsonify, request,Response, send_file
 from sqlalchemy import and_
 
-from App import app,session,container_client
+from App import app,Session,container_client
 
 from flask_jwt_extended import create_access_token,jwt_required,get_jwt_identity
 from App.Extensions.OpenAI import FinancialAssistant, Summarize_document, chat
@@ -29,12 +29,15 @@ document_embedding_signal = signal('document-embedding')
 InsuranceScheme_embedding_signal = signal('InsuranceScheme-embedding')
 def InsertDocumentChunk(documnet_chink : List[DocumentChunks]):
     try:
+        session = Session()
         session.add_all(documnet_chink)
         session.commit()
         pass
     except Exception as e:
         raise e
         pass
+    finally:
+        session.close()
     
     
 def generate_unique_filename(original_filename):
@@ -47,66 +50,95 @@ def generate_unique_filename(original_filename):
 
 @InsuranceScheme_embedding_signal.connect
 def on_InsuranceScheme_embedding(sender, **document_embedding_event):
-    
-    scheme_id = document_embedding_event.get("scheme_id")
-    document_path = document_embedding_event.get("document_path")
-    
-    Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
-    InsertDocumentChunk(Document_chunks)
-    Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
-    Response.isencoded = True
-    session.add(Response)
-    session.commit()
+    session = Session()
+    try:
+        
+        scheme_id = document_embedding_event.get("scheme_id")
+        document_path = document_embedding_event.get("document_path")
+        
+        Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
+        InsertDocumentChunk(Document_chunks)
+        Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
+        Response.isencoded = True
+        session.add(Response)
+        session.commit()
+    except Exception as e:
+        raise e
+    finally:
+        session.close()
 
 @document_embedding_signal.connect
 def on_document_embedding(sender, **document_embedding_event):
     document_id = document_embedding_event.get("document_id")
     document_path = document_embedding_event.get("SchemeDocument_path")
-    
-    Document_chunks = Embed_document(path=document_path,Document_id= document_id)
-    InsertDocumentChunk(Document_chunks)
-    Response = session.query(Document).filter( Document.document_id == document_id).first()
-    Response.is_encoded = True
-    session.add(Response)
-    session.commit()
-    
+    try:
+        session = Session()
+        Document_chunks = Embed_document(path=document_path,Document_id= document_id)
+        InsertDocumentChunk(Document_chunks)
+        Response = session.query(Document).filter( Document.document_id == document_id).first()
+        Response.is_encoded = True
+        session.add(Response)
+        session.commit()
+    except Exception as e:
+        raise e
+    finally:
+        session.close()
     
 def document_embedding(document_id,document_path):
     # document_id = document_embedding_event.get("document_id")
     # document_path = document_embedding_event.get("SchemeDocument_path")
-    print("Is embedding")
-    Document_chunks = Embed_document(path=document_path,Document_id= document_id)
-    InsertDocumentChunk(Document_chunks)
-    Response = session.query(Document).filter( Document.document_id == document_id).first()
-    Response.is_encoded = True
-    session.add(Response)
-    session.commit()
+    try:
+        session = Session()
+        print("Is embedding")
+        Document_chunks = Embed_document(path=document_path,Document_id= document_id)
+        InsertDocumentChunk(Document_chunks)
+        Response = session.query(Document).filter( Document.document_id == document_id).first()
+        Response.is_encoded = True
+        session.add(Response)
+        session.commit()
+    except Exception as e:
+        raise e
+    finally:
+        session.close()
     
 def InsuranceScheme_embedding(scheme_id,document_path):
     
     # scheme_id = document_embedding_event.get("scheme_id")
     # document_path = document_embedding_event.get("document_path")
-    
-    Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
-    InsertDocumentChunk(Document_chunks)
-    Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
-    Response.isencoded = True
-    session.add(Response)
-    session.commit()
+    try:
+        session = Session()
+        Document_chunks = Embed_Scheme(path=document_path,scheme_id= scheme_id)
+        InsertDocumentChunk(Document_chunks)
+        Response = session.query(InsuranceScheme).filter( InsuranceScheme.scheme_id == scheme_id).first()
+        Response.isencoded = True
+        session.add(Response)
+        session.commit()
+    except Exception as e:
+        raise e
+    finally:
+        session.close()
 @app.route('/GetUserInfo', methods=['GET'])
 @jwt_required()
 def hello():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Response = session.query(Users).filter(Users.id == user_id).one()
-    return jsonify({'Response':User_schema.dump(Response)}),200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Response = session.query(Users).filter(Users.id == user_id).one()
+        return jsonify({'Response':User_schema.dump(Response)}),200
+    except Exception as e:
+        print(e)
+        return jsonify({'Response':"something went wrong"}),500
+    finally:
+        session.close()
+        
 @app.route('/')
 def index():
     return jsonify({'Response': "Application is running"}),200
 @app.route('/register', methods=['POST'])
 def register():
     try:
-        
+        session = Session()
         username = request.json.get('username', None)
         email = request.json.get('email', None)
         password = request.json.get('password', None)
@@ -127,6 +159,8 @@ def register():
     except Exception as e:
             session.rollback()
             return jsonify({'Response': e}),500
+    finally:
+        session.close()
             
      
 
@@ -135,6 +169,7 @@ def register():
 def Login():
     
     try:
+        session = Session()
         email = request.json.get('email', None)
         password = request.json.get('password', None)
         
@@ -157,12 +192,15 @@ def Login():
         session.rollback() 
         print(e)
         return jsonify({'Response': "Something went wrong"}),500
+    finally:
+        session.close()
     
 
 @app.route('/add_income_source', methods=['POST'])
 @jwt_required()
 def add_income_source():
     try:
+        session = Session()
         data = request.get_json()
         current_token = get_jwt_identity()
         user_id = current_token['User_id'] 
@@ -184,22 +222,31 @@ def add_income_source():
     except Exception as e:
         # Handle validation errors or other exceptions
         return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_income_sources', methods=['GET'])
 @jwt_required()
 def get_all_income_sources():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    income_sources = session.query(IncomeSource).filter(IncomeSource.user_id == user_id).order_by(IncomeSource.transaction_date).all()
-    income_sources_schema = IncomeSourceSchema(many=True)
-    result = income_sources_schema.dump(income_sources)
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        income_sources = session.query(IncomeSource).filter(IncomeSource.user_id == user_id).order_by(IncomeSource.transaction_date).all()
+        income_sources_schema = IncomeSourceSchema(many=True)
+        result = income_sources_schema.dump(income_sources)
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+         return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 
 @app.route('/add_Budget', methods=['POST'])
 @jwt_required()
 def add_Budget():
     try:
+        session = Session()
         data = request.get_json()
         current_token = get_jwt_identity()
         user_id = current_token['User_id'] 
@@ -222,27 +269,36 @@ def add_Budget():
         session.rollback()
         # Handle validation errors or other exceptions
         return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_Budgets', methods=['GET'])
 @jwt_required()
 def get_all_Budgets():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Budgets = session.query(Budget).filter(Budget.user_id == user_id).all()
-    Budget_schema = BudgetSchema(many=True)
-    result = Budget_schema.dump(Budgets)
-    result = [{"budget_amount": original_data["budget_amount"],
-    "budget_id": original_data["budget_id"],
-    "category_name": original_data["category"]["category_name"],
-    "category_id": original_data["category_id"],
-    "month": original_data["month"],
-    "user_id": original_data["user_id"],
-    "year": original_data["year"]} for item,original_data in enumerate(result)]
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Budgets = session.query(Budget).filter(Budget.user_id == user_id).all()
+        Budget_schema = BudgetSchema(many=True)
+        result = Budget_schema.dump(Budgets)
+        result = [{"budget_amount": original_data["budget_amount"],
+        "budget_id": original_data["budget_id"],
+        "category_name": original_data["category"]["category_name"],
+        "category_id": original_data["category_id"],
+        "month": original_data["month"],
+        "user_id": original_data["user_id"],
+        "year": original_data["year"]} for item,original_data in enumerate(result)]
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 @app.route('/add_ExpenseCategory', methods=['POST'])
 @jwt_required()
 def add_ExpenseCategory():
     try:
+        session = Session()
         data = request.get_json()
         current_token = get_jwt_identity()
         user_id = current_token['User_id'] 
@@ -263,45 +319,70 @@ def add_ExpenseCategory():
         session.rollback()
         # Handle validation errors or other exceptions
         return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_ExpenseCategorys', methods=['GET'])
 @jwt_required()
 def get_all_ExpenseCategorys():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Budgets = session.query(ExpenseCategory).filter(ExpenseCategory.user_id == user_id).all()
-    Budget_schema = ExpenseCategorySchema(many=True)
-    result = Budget_schema.dump(Budgets)
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Budgets = session.query(ExpenseCategory).filter(ExpenseCategory.user_id == user_id).all()
+        Budget_schema = ExpenseCategorySchema(many=True)
+        result = Budget_schema.dump(Budgets)
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+        
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_InsuranceScheme', methods=['GET'])
 @jwt_required()
 def get_all_InsuranceScheme():
-    insurance_schemes = session.query(InsuranceScheme).all()
-    insurance_scheme = InsuranceSchemeSchema(many=True)
-    result = insurance_scheme.dump(insurance_schemes)
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        insurance_schemes = session.query(InsuranceScheme).all()
+        insurance_scheme = InsuranceSchemeSchema(many=True)
+        result = insurance_scheme.dump(insurance_schemes)
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+         # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_InsuranceCategory', methods=['GET'])
 @jwt_required()
 def Get_InsuranceCategory():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Insurance_Category = session.query(InsuranceCategory).all()
-    InsuranceCategory.description,
-    InsuranceCategory.category_name,
-    InsuranceCategory.category_id
-    Insurance_Category_schema = InsuranceCategorySchema(many=True)
-    result = Insurance_Category_schema.dump(Insurance_Category)
-    result = [{"category_id": original_data["category_id"],
-    "category_name": original_data["category_name"],
-    "description": original_data["description"],
-    } for item,original_data in enumerate(result)]
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Insurance_Category = session.query(InsuranceCategory).all()
+        InsuranceCategory.description,
+        InsuranceCategory.category_name,
+        InsuranceCategory.category_id
+        Insurance_Category_schema = InsuranceCategorySchema(many=True)
+        result = Insurance_Category_schema.dump(Insurance_Category)
+        result = [{"category_id": original_data["category_id"],
+        "category_name": original_data["category_name"],
+        "description": original_data["description"],
+        } for item,original_data in enumerate(result)]
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+         # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 @app.route('/add_insurance_scheme', methods=['POST'])
 @jwt_required()
 def add_insurance_scheme():
     try:
+        session = Session()
         current_token = get_jwt_identity()
         user_id = current_token['User_id'] 
         if 'file' not in request.files:
@@ -359,12 +440,15 @@ def add_insurance_scheme():
             return jsonify(response),200
     except Exception as ex:
         session.rollback()
-        return jsonify({"response":ex}),200
+        return jsonify({"response":str(ex)}),200
+    finally:
+        session.close()
     
 @app.route('/Get_insurance_scheme/<int:scheme_id>', methods=['GET'])
 @jwt_required()
 def Get_insurance_scheme(scheme_id):
     try:
+        session = Session()
         insurance_scheme = session.query(InsuranceScheme).get(scheme_id)
         insurance_schema = InsuranceSchemeSchema()
         result = insurance_schema.dump(insurance_scheme)
@@ -373,11 +457,14 @@ def Get_insurance_scheme(scheme_id):
     except Exception as ex:
         session.rollback()
         return jsonify({"response": str(ex)}), 500
+    finally:
+        session.close()
 
 @app.route('/edit_insurance_scheme/<int:scheme_id>', methods=['PUT'])
 @jwt_required()
 def edit_insurance_scheme(scheme_id):
     try:
+        session = Session()
         current_token = get_jwt_identity()
         user_id = current_token['User_id']
 
@@ -425,28 +512,37 @@ def edit_insurance_scheme(scheme_id):
     except Exception as ex:
         session.rollback()
         return jsonify({"response": str(ex)}), 500
+    finally:
+        session.close()
 
 @app.route('/DeleteInsuranceschemes/<int:scheme_id>', methods=['DELETE'])
 @jwt_required()
 def DeleteInsuranceschemes(scheme_id):
     current_token = get_jwt_identity()
     user_id = current_token['User_id']
-    
-    Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == scheme_id).first()
-    
-    if(Response):
-        document_client =  container_client.get_blob_client(Response.document_path)
-        session.delete(Response)
-        session.commit()
-        if(document_client):
-            document_client.delete_blob()
-        return jsonify({"Response": "scheme removed successfully" }),200
-    else:
-        return jsonify({"Response": "scheme Not found" }),404
+    try:
+        session = Session()
+        Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == scheme_id).first()
+        
+        if(Response):
+            document_client =  container_client.get_blob_client(Response.document_path)
+            session.delete(Response)
+            session.commit()
+            if(document_client):
+                document_client.delete_blob()
+            return jsonify({"Response": "scheme removed successfully" }),200
+        else:
+            return jsonify({"Response": "scheme Not found" }),404
+    except Exception as ex:
+        session.rollback()
+        return jsonify({"response": str(ex)}), 500
+    finally:
+        session.close()
 @app.route('/add_Expense', methods=['POST'])
 @jwt_required()
 def add_Expense():
     try:
+        session = Session()
         data = request.get_json()
         current_token = get_jwt_identity()
         user_id = current_token['User_id'] 
@@ -469,167 +565,225 @@ def add_Expense():
         session.rollback()
         # Handle validation errors or other exceptions
         return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/Get_Expenses', methods=['GET'])
 @jwt_required()
 def get_all_Expense():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Expenses = session.query(Expense).filter(Expense.user_id == user_id).all()
-    Expense_schema = ExpenseSchema(many=True)
-    result = Expense_schema.dump(Expenses)
-    result = [{"amount": original_data["amount"],
-    "category_name": original_data["category"]["category_name"],
-    "category_id": original_data["category_id"],
-    "description": original_data["description"],
-    "expense_date": original_data["expense_date"],
-    "expense_id": original_data["expense_id"],
-    "user_id": original_data["user_id"]} for item,original_data in enumerate(result)]
-    return jsonify({'Response': result}), 200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Expenses = session.query(Expense).filter(Expense.user_id == user_id).all()
+        Expense_schema = ExpenseSchema(many=True)
+        result = Expense_schema.dump(Expenses)
+        result = [{"amount": original_data["amount"],
+        "category_name": original_data["category"]["category_name"],
+        "category_id": original_data["category_id"],
+        "description": original_data["description"],
+        "expense_date": original_data["expense_date"],
+        "expense_id": original_data["expense_id"],
+        "user_id": original_data["user_id"]} for item,original_data in enumerate(result)]
+        return jsonify({'Response': result}), 200
+    except Exception as e:
+        session.rollback()
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/QueryDoucment', methods=['POST'])
 @jwt_required()
 def QueryDoucment():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    Query = request.json.get('Query', None)
-    Query_vector = Embeded_Text(Query)
-    Response =session.query(DocumentChunks.content,DocumentChunks.embedding.cosine_distance(Query_vector)).filter(DocumentChunks.embedding.cosine_distance(Query_vector) < 0.8).order_by(DocumentChunks.embedding.cosine_distance(Query_vector)).all()
-    
-    Jsoin_Response = DocumentChunks_schema.dump(Response)
-    Records = [ item.get("content") for item in Jsoin_Response]
-    Records = "".join(Records)
-    
-    return jsonify({"Response":Records}),200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        Query = request.json.get('Query', None)
+        Query_vector = Embeded_Text(Query)
+        Response =session.query(DocumentChunks.content,DocumentChunks.embedding.cosine_distance(Query_vector)).filter(DocumentChunks.embedding.cosine_distance(Query_vector) < 0.8).order_by(DocumentChunks.embedding.cosine_distance(Query_vector)).all()
+        
+        Jsoin_Response = DocumentChunks_schema.dump(Response)
+        Records = [ item.get("content") for item in Jsoin_Response]
+        Records = "".join(Records)
+        
+        return jsonify({"Response":Records}),200
+    except Exception as e:
+       
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
     
 
 @app.route('/downloadScheme/<schemeId>')
 def downloadScheme(schemeId):
-    Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == schemeId).first()
-    filename = Response.document_path
-    blob_client = container_client.get_blob_client(filename)
-    blob_content = blob_client.download_blob().readall()
+    try:
+        session = Session()
+        Response = session.query(InsuranceScheme).filter(InsuranceScheme.scheme_id == schemeId).first()
+        filename = Response.document_path
+        blob_client = container_client.get_blob_client(filename)
+        blob_content = blob_client.download_blob().readall()
 
-# Wrap the content in BytesIO to make it a file-like object
-    file_like = BytesIO(blob_content)
+    # Wrap the content in BytesIO to make it a file-like object
+        file_like = BytesIO(blob_content)
 
-    # Specify the content type based on the file extension
-    content_type = "application/octet-stream"
-    if "." in filename:
-        _, extension = filename.rsplit(".", 1)
-        content_type = f"application/{extension}"
+        # Specify the content type based on the file extension
+        content_type = "application/octet-stream"
+        if "." in filename:
+            _, extension = filename.rsplit(".", 1)
+            content_type = f"application/{extension}"
 
-    return send_file(
-        file_like,
-        mimetype=content_type,
-        as_attachment=True,
-        download_name=filename
-    )
+        return send_file(
+            file_like,
+            mimetype=content_type,
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+       
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/download/<documentID>')
 def download(documentID):
-    Response = session.query(Document).filter(Document.document_id == documentID).first()
-    filename = Response.file_path
-    blob_client = container_client.get_blob_client(Response.file_path)
-    blob_properties = blob_client.get_blob_properties()
+    try:
+        session = Session()
+        Response = session.query(Document).filter(Document.document_id == documentID).first()
+        filename = Response.file_path
+        blob_client = container_client.get_blob_client(Response.file_path)
+        blob_properties = blob_client.get_blob_properties()
 
-    # Specify the content type based on the file extension
-    content_type = "application/octet-stream"
-    if "." in filename:
-        _, extension = filename.rsplit(".", 1)
-        content_type = f"application/{extension}"
+        # Specify the content type based on the file extension
+        content_type = "application/octet-stream"
+        if "." in filename:
+            _, extension = filename.rsplit(".", 1)
+            content_type = f"application/{extension}"
 
-    return send_file(
-        blob_client.download_blob().readall(),
-        mimetype=content_type,
-        as_attachment=True,
-        download_name=filename
-    )
+        return send_file(
+            blob_client.download_blob().readall(),
+            mimetype=content_type,
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/UploadDocument', methods=['POST'])
 @jwt_required()
 def uploadDoument():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    if 'file' not in request.files:
-        return "No file part"
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        if 'file' not in request.files:
+            return "No file part"
 
-    file = request.files['file']
-    Title = request.form.get('Title')
-    description = request.form.get('description')
+        file = request.files['file']
+        Title = request.form.get('Title')
+        description = request.form.get('description')
 
-    if file.filename == '':
-        return "No selected file"
+        if file.filename == '':
+            return "No selected file"
 
-   
-    if file:
-        new_filename = generate_unique_filename(file.filename)
-
-        blob_client = container_client.get_blob_client(new_filename)
-
-        # Upload file to Azure Storage with the unique filename
-        blob_client.upload_blob(file.stream.read(), overwrite=True)
-        # Specify the directory where you want to save the file
-        upload_folder = 'uploads'  # Change to your desired directory
-
-        # if not os.path.exists(upload_folder):
-        #     os.makedirs(upload_folder)
-        # path = os.path.join(upload_folder, new_filename)
     
-        Documet_Exist = session.query(Document).filter(Document.file_path == new_filename).first()
-        if(Documet_Exist):
-             return jsonify({'Response' :'Document Already Exist'}),409
+        if file:
+            new_filename = generate_unique_filename(file.filename)
 
-        # file.save(path)
+            blob_client = container_client.get_blob_client(new_filename)
 
-        Document_to_add = Document(title=Title,description=description,user_id = user_id,file_path=new_filename,is_encoded = False) 
-        session.add(Document_to_add)
-        session.commit()
-        response = {
-                        "data": "File uploaded successfully.. Encoding is in progress",
-                        "status": "success", 
-                        "id": Document_to_add.document_id
-                    }
+            # Upload file to Azure Storage with the unique filename
+            blob_client.upload_blob(file.stream.read(), overwrite=True)
+            # Specify the directory where you want to save the file
+            upload_folder = 'uploads'  # Change to your desired directory
 
-        #embedding_event = {"document_id" : Document_to_add.document_id , "document_path":new_filename }
-        bidding_cb = Process(target=document_embedding, args=(Document_to_add.document_id, new_filename))
-        bidding_cb.start()
-        #document_embedding_signal.send(**embedding_event)
-        return jsonify(response),200
-    
+            # if not os.path.exists(upload_folder):
+            #     os.makedirs(upload_folder)
+            # path = os.path.join(upload_folder, new_filename)
+        
+            Documet_Exist = session.query(Document).filter(Document.file_path == new_filename).first()
+            if(Documet_Exist):
+                return jsonify({'Response' :'Document Already Exist'}),409
+
+            # file.save(path)
+
+            Document_to_add = Document(title=Title,description=description,user_id = user_id,file_path=new_filename,is_encoded = False) 
+            session.add(Document_to_add)
+            session.commit()
+            response = {
+                            "data": "File uploaded successfully.. Encoding is in progress",
+                            "status": "success", 
+                            "id": Document_to_add.document_id
+                        }
+
+            #embedding_event = {"document_id" : Document_to_add.document_id , "document_path":new_filename }
+            bidding_cb = Process(target=document_embedding, args=(Document_to_add.document_id, new_filename))
+            bidding_cb.start()
+            #document_embedding_signal.send(**embedding_event)
+            return jsonify(response),200
+    except Exception as e:
+        session.rollback()
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
     
     
 @app.route('/GetDocuments', methods=['GET'])
 @jwt_required()
 def GetDocuments():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id']
-    
-    Response = session.query(Document).filter(Document.user_id == user_id ).all()
-    
-    return jsonify({"Response":Document_schema.dump(Response)}),200
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id']
+        
+        Response = session.query(Document).filter(Document.user_id == user_id ).all()
+        
+        return jsonify({"Response":Document_schema.dump(Response)}),200
+    except Exception as e:
+        
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/DeleteDocument/<int:Document_id>', methods=['DELETE'])
 @jwt_required()
 def DeleteDocument(Document_id):
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id']
-    
-    Response = session.query(Document).filter(Document.user_id == user_id and Document.document_id == Document_id).first()
-    
-    if(Response):
-        document_client =  container_client.get_blob_client(Response.file_path)
-        session.delete(Response)
-        session.commit()
-        document_client.delete_blob()
-        return jsonify({"Response": "File removed successfully" }),200
-    else:
-        return jsonify({"Response": "File Not found" }),404
+    try:
+        session = Session()
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id']
+        
+        Response = session.query(Document).filter(Document.user_id == user_id and Document.document_id == Document_id).first()
+        
+        if(Response):
+            document_client =  container_client.get_blob_client(Response.file_path)
+            session.delete(Response)
+            session.commit()
+            document_client.delete_blob()
+            return jsonify({"Response": "File removed successfully" }),200
+        else:
+            return jsonify({"Response": "File Not found" }),404
+    except Exception as e:
+        session.rollback()
+        # Handle validation errors or other exceptions
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/QAInsuranceScheme', methods=['POST'])
 @jwt_required()
 def AskQuestionAboutInsuranceScheme():
     try:
+        session = Session()
         SchemeId = request.json.get('SchemeId', None)
         Question = request.json.get('Question', None)
         Query_vector = Embeded_Text(Question)
@@ -664,11 +818,14 @@ def AskQuestionAboutInsuranceScheme():
         return jsonify({"schemes":SchemeId,"Question":Question,"Response":Result}),200
     except Exception as e:
         session.rollback()
-        return jsonify({"Response":e}),500
+        return jsonify({"Response":str(e)}),500
+    finally:
+        session.close()
 @app.route('/QAdocument', methods=['POST'])
 @jwt_required()
 def AskQuestionAboutDocument():
     try:
+        session = Session()
         Document_id = request.json.get('Document_id', None)
         Question = request.json.get('Question', None)
         Query_vector = Embeded_Text(Question)
@@ -695,10 +852,11 @@ def AskQuestionAboutDocument():
         Result = chat({"context":Records,"question":Question},prompt_template)    
         return jsonify({"Document_id":Document_id,"Question":Question,"Response":Result})
         
-        
-        pass
     except Exception as e:
+        return jsonify({"Response":str(e)}),500
         pass
+    finally:
+        session.close()
     
     
 @app.route('/FinancialAssistant', methods=['POST'])
@@ -716,33 +874,47 @@ def stream_data():
 @app.route('/SummarizeDocument', methods=['POST'])
 @jwt_required()
 def SummarizeDocument():
-    current_token = get_jwt_identity()
-    user_id = current_token['User_id'] 
-    if 'file' not in request.files:
-        return "No file part"
+    try:
+        current_token = get_jwt_identity()
+        user_id = current_token['User_id'] 
+        if 'file' not in request.files:
+            return "No file part"
 
-    file = request.files['file']
-    if file.filename == '':
-        return "No selected file"
+        file = request.files['file']
+        if file.filename == '':
+            return "No selected file"
 
-   
-    if file:
-        upload_folder = "../../uploads/"
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+    
+        if file:
+            current_directory = os.getcwd()
+            print("Present Working Directory:", current_directory)
+                
+            folder_name = "uploads"
+            folder_path = os.path.join(current_directory, folder_name)
+                # Check if the folder exists
+            if not os.path.exists(folder_path):
+                    # Create the folder if it doesn't exist
+                    os.makedirs(folder_path)
+                    print(f"Folder '{folder_path}' created successfully.")
+            else:
+                    print(f"Folder '{folder_path}' already exists.")
 
-        file_path = os.path.join(upload_folder, file.filename)
-        file.save(file_path)
-        #DocStrings = process_document(file_path)
+            file_path = os.path.join(folder_path, file.filename)
+            file.save(file_path)
+            #DocStrings = process_document(file_path)
+            
         
-       
-        result = Summarize_document(user_id,file_path)
-        os.remove(file_path)
-        return jsonify(result),200   
+            result = Summarize_document(user_id,file_path)
+            os.remove(file_path)
+            return jsonify(result),200
+    except Exception as e:
+        return jsonify({"Response":str(e)}),500
+        pass  
     
 @app.route('/InsuranceAssistant', methods=['POST'])
 def InsuranceAssistant():
           try:
+                session = Session()
                 Question = request.json.get('Question', None)
                 Query_vector = Embeded_Text(Question)
                 SchemeContent =session.query(SchemeVector).filter(SchemeVector.vector_data.cosine_distance(Query_vector) <= 0.8).order_by(SchemeVector.vector_data.cosine_distance(Query_vector)).limit(30).all()
@@ -775,8 +947,10 @@ def InsuranceAssistant():
                 Result = chat({"context":Records,"question":Question},prompt_template)    
                 return jsonify({"schemes":Scheme_ids ,"Question":Question,"Response":Result}),200
           except Exception as e:
-                session.rollback()
-                return jsonify({"Response":e}),500    
+                
+                return jsonify({"Response":e}),500  
+          finally:
+                session.close()  
 
 
         

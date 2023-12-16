@@ -34,7 +34,7 @@ Jwt = JWTManager(app=app)
 CORS(app)
 engine =  create_engine(app.config.get('SQLALCHEMY_DATABASE_URI'),echo=True)
 Session = sessionmaker(engine)
-session = Session()
+
 Base = declarative_base()
 ma = Marshmallow(app=app)
 print(app.config)
