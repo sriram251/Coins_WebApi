@@ -806,7 +806,7 @@ def AskQuestionAboutInsuranceScheme():
                             Begin! Remember to speak as a Insurance assistant to the customer 
                             with no perior knowledge in insurace  background when giving your final answer.
                             If the question not related to the context you can Answer as question is not related to Insurance Scheme.
-                            If need user asked as list or points you should provide it as points. like
+                            If need you should provide points you should provide it as points. like
                             1.)...
                             2.)..
                             .
@@ -844,7 +844,10 @@ def AskQuestionAboutDocument():
                             Begin! Remember to speak as a Financail assistant to the customer 
                             with no financial background when giving your final answer.
                             If the question not related to the context you can Answer as question is not related to document.
-                            If need you can provide it as points.
+                            If need you can provide it as points.like
+                            1.)...
+                            2.)..
+                            .
                             answer the question: {question}
                             Answer:
                       """

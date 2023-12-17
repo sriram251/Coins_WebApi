@@ -9,6 +9,7 @@ from langchain.callbacks.manager import CallbackManager
 from langchain.chat_models import AzureChatOpenAI
 from langchain.agents import initialize_agent,Tool,AgentType, AgentExecutor, LLMSingleActionAgent,AgentOutputParser
 from langchain.utilities import GoogleSearchAPIWrapper
+from langchain.utilities import TextRequestsWrapper
 from langchain.schema import AgentAction,AgentFinish
 from langchain.chains import LLMChain
 from langchain.chains.summarize import load_summarize_chain
@@ -16,6 +17,7 @@ from langchain.prompts import StringPromptTemplate,PromptTemplate
 from langchain.schema import OutputParserException
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.document_loaders import PDFMinerLoader
+from langchain.agents import load_tools
 # from App.Extensions.Embedding import process_document
 
 class CustomOutputParser(AgentOutputParser):
@@ -114,21 +116,12 @@ class ChainStreamHandler(FinalStreamingStdOutCallbackHandler):
 
 def llm_thread_openAI( prompt,system_message):
     try:
-       search = GoogleSearchAPIWrapper()
-       tools = [Tool(
-            name="Google Search",
-            description="A search engine. Useful for when you need to answer questions about current events. Input should be a search query.",
-            func=search.run,
-        )]
+       
        api_key = os.environ.get("OPENAI_API_KEY")
        Base_url = os.environ.get("OPENAI_API_BASE")
        llm = AzureChatOpenAI(api_key=api_key,
                         base_url=Base_url,deployment_name="gpt-35-turbo-0301")
-       Agent = initialize_agent(tools,llm, agent= AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-                          return_intermediate_steps=True,
-                         max_execution_time=5,
-                         
-                         early_stopping_method='generate',agent_kwargs={"system_message":system_message})
+      
        chain = LLMChain(llm=llm,prompt=system_message)
        result = chain(prompt,return_only_outputs=True)
        return result
@@ -137,23 +130,7 @@ def llm_thread_openAI( prompt,system_message):
         raise e
     finally:
         pass
-def llm_thread_Custome(g, prompt):
-    try:
-       Current_path = os.getcwd()
-       path = os.path.join(Current_path,Mistral_path)
-       llm = LlamaCpp(model_path=path,
-                      n_gpu_layers=40,
-                      temperature=0.3,
-                      n_ctx=1250,
-                      f16_kv=True,
-                      
-                      streaming=True,
-                      callback_manager=CallbackManager([FinalStreamingStdOutCallbackHandler]))
-       result = llm.generate([prompt])
-       
-       pass
-    finally:
-        g.close()
+
 def chat(prompt,system_message):
     
     return llm_thread_openAI(prompt,system_message)
@@ -171,10 +148,10 @@ def FinancialAssistant(Question):
 
     Please make sure you complete the objective above with the following rules:
     1/ If the provideded Questions conatains multiple questions.you can split the questions and answer
-    1/ You should provide the detailed answer for the questions and make sure the information is meaning full
-    2/ You should content is meaning full enough to the context before using any tools/
-    3/ You should do enough research to gather as much information as possible about the objective
-    4/ After gather as much information, you should think "is there any new things i should search  based on the data I collected to increase Response quality?" If answer is yes, continue; But don't do this more than 3 iteratins
+    2/ You should provide the detailed answer for the questions and make sure the information is meaning full
+    3/ You should content is meaning full enough to the context before using any tools/
+    4/ You should do enough research to gather as much information as possible about the objective
+    5/ After gather as much information, you should think "is there any new things i should search  based on the data I collected to increase Response quality?" If answer is yes, continue; But don't do this more than 3 iteratins
     
     Answer the following questions as best you can,if Action is like refuse to answer you should provide it as Final Answer,if Observation will answer the question you can provide it as Final Answer ,You have access to the following tools:
 
@@ -189,23 +166,52 @@ def FinancialAssistant(Question):
     Observation: the result of the action
     ... (this Thought/Action/Action Input/Observation can repeat 3 times)
     Thought: I now know the final answer
-    Final Answer: the final answer to the original input question
+    Final Answer: the final answer to the original input question there should be only one Final Answer
 
-    Begin! Remember to speak as a Financial assistant for the person with out fiancail background.If needed provide it as points when giving your final answer.
+    Begin! Remember to speak as a Financial assistant for the person with out fiancail background you can also provide table output or points.
+    If needed provide it as points like 
+    1)...
+    2)....
+    If needed as Table should return like
+    <table>
+      <thead>
+        <tr>
+         columns
+        </tr>
+        
+        <tr>
+         column2
+        </tr>
+      </thead>
+      <tbody>
+        <td >values</td>
+      </tbody>
+    </table>
+    you should  use Table or points only for final answer not for Action Input
+    when giving your final answer.
 
     Question: {input}
     {agent_scratchpad}"""
     
     search = GoogleSearchAPIWrapper()
-    tools = [Tool(
-            name="Google Search",
-            description="A search engine. Useful for when you need to answer questions about current events. Input should be a search query.",
-            func=search.run,
-        )]
+    requests = TextRequestsWrapper()
     api_key = os.environ.get("OPENAI_API_KEY")
     Base_url = os.environ.get("OPENAI_API_BASE")
     llm = AzureChatOpenAI(api_key=api_key,
                         base_url=Base_url,deployment_name="gpt-35-turbo-0301")
+    tools = load_tools(["llm-math"], llm=llm)
+    tools.append(Tool(
+            name="Google Search",
+            description="A search engine. Useful for when you need to answer questions about current events. Input should be a search query.",
+            func=search.run,
+        ))
+    tools.append(
+        Tool(
+        name = "Requests",
+        func=requests.get,
+        description="Useful for when you to make a request to a URL"
+    ))
+   
     prompt = CustomPromptTemplate(
     template=template,
     tools=tools,
