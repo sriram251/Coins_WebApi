@@ -181,7 +181,7 @@ def Login():
                     'Admin':  user.admin,
                     "User_id":user.id
                 }
-            Expiry = timedelta(minutes=15)
+            Expiry = timedelta(minutes=30)
             clams = {'role': 'admin' if user.admin else 'User'}
             token = create_access_token(identity=user_info,expires_delta=Expiry,additional_claims=clams) 
             return jsonify({"username":user.username,"email":user.email,"access_token":token}), 200

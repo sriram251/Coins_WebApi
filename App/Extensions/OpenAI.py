@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import queue
 import re
@@ -8,7 +9,7 @@ from langchain.callbacks.streaming_stdout_final_only import FinalStreamingStdOut
 from langchain.callbacks.manager import CallbackManager
 from langchain.chat_models import AzureChatOpenAI
 from langchain.agents import initialize_agent,Tool,AgentType, AgentExecutor, LLMSingleActionAgent,AgentOutputParser
-from langchain.utilities import GoogleSearchAPIWrapper
+from langchain.utilities import GoogleSerperAPIWrapper
 from langchain.utilities import TextRequestsWrapper
 from langchain.schema import AgentAction,AgentFinish
 from langchain.chains import LLMChain
@@ -35,7 +36,12 @@ class CustomOutputParser(AgentOutputParser):
         regex = r"Action\s*\d*\s*:(.*?)\nAction\s*\d*\s*Input\s*\d*\s*:[\s]*(.*)"
         match = re.search(regex, llm_output, re.DOTALL)
         if not match:
-            raise OutputParserException(f"Could not parse LLM output: `{llm_output}`")
+            return AgentFinish(
+                # Return values is generally always a dictionary with a single `output` key
+                # It is not recommended to try anything else at the moment :)
+                return_values={"output": "Something went wrong... Please Try again"},
+                log=llm_output,
+            )
         action = match.group(1).strip()
         action_input = match.group(2)
         # Return the action and action input
@@ -82,8 +88,12 @@ class CustomOutputParser(AgentOutputParser):
         regex = r"Action\s*\d*\s*:(.*?)\nAction\s*\d*\s*Input\s*\d*\s*:[\s]*(.*)"
         match = re.search(regex, llm_output, re.DOTALL)
         if not match:
-            raise OutputParserException(
-                f"Could not parse LLM output: `{llm_output}`")
+             return AgentFinish(
+                # Return values is generally always a dictionary with a single `output` key
+                # It is not recommended to try anything else at the moment :)
+                return_values={"output": "Something went wrong... Please Try again"},
+                log=llm_output,
+            )
         action = match.group(1).strip()
         action_input = match.group(2)
         # Return the action and action input
@@ -151,13 +161,15 @@ def FinancialAssistant(Question):
     2/ You should provide the detailed answer for the questions and make sure the information is meaning full
     3/ You should content is meaning full enough to the context before using any tools/
     4/ You should do enough research to gather as much information as possible about the objective
-    5/ After gather as much information, you should think "is there any new things i should search  based on the data I collected to increase Response quality?" If answer is yes, continue; But don't do this more than 3 iteratins
+    5/ You should use only autherized web sites in you should correctly and has to pass the todays date Google Search Tool to gather present event information like Gold price, stock info.. etc .
+    6/ you should check the inforamtion is upto date.
+    7/ After gather as much information, you should think "is there any new things i should search  based on the data I collected to increase Response quality?" If answer is yes, continue; But don't do this more than 3 iteratins
     
     Answer the following questions as best you can,if Action is like refuse to answer you should provide it as Final Answer,if Observation will answer the question you can provide it as Final Answer ,You have access to the following tools:
 
     {tools}
 
-    Use the following format:
+    Use the following format.It should always satsify this Regux(Action\s*\d*\s*:(.*?)\nAction\s*\d*\s*Input\s*\d*\s*:[\s]*(.*)) or It should contain Final Answer :
 
     Question: the input question you must answer
     Thought: you should always think about what to do
@@ -168,7 +180,7 @@ def FinancialAssistant(Question):
     Thought: I now know the final answer
     Final Answer: the final answer to the original input question there should be only one Final Answer
 
-    Begin! Remember to speak as a Financial assistant for the person with out fiancail background you can also provide table output or points.
+    Begin! Remember to speak as a Financial assistant for the person with out fiancaial background you can also provide table output or points.
     If needed provide it as points like 
     1)...
     2)....
@@ -178,7 +190,6 @@ def FinancialAssistant(Question):
         <tr>
          columns
         </tr>
-        
         <tr>
          column2
         </tr>
@@ -193,24 +204,24 @@ def FinancialAssistant(Question):
     Question: {input}
     {agent_scratchpad}"""
     
-    search = GoogleSearchAPIWrapper()
+    search = GoogleSerperAPIWrapper(k=5)
+    
     requests = TextRequestsWrapper()
     api_key = os.environ.get("OPENAI_API_KEY")
     Base_url = os.environ.get("OPENAI_API_BASE")
     llm = AzureChatOpenAI(api_key=api_key,
                         base_url=Base_url,deployment_name="gpt-35-turbo-0301")
-    tools = load_tools(["llm-math"], llm=llm)
-    tools.append(Tool(
+    
+    tools = [Tool(
             name="Google Search",
-            description="A search engine. Useful for when you need to answer questions about current events. Input should be a search query.",
+            description="A search engine. Useful for when you need to answer questions about current events like Gold price,Stock informations ..etc . Input should be a search query.",
             func=search.run,
-        ))
-    tools.append(
+        ),
         Tool(
         name = "Requests",
         func=requests.get,
         description="Useful for when you to make a request to a URL"
-    ))
+    )]
    
     prompt = CustomPromptTemplate(
     template=template,
@@ -226,9 +237,10 @@ def FinancialAssistant(Question):
     agent = LLMSingleActionAgent(
         llm_chain=chain,
         output_parser=output_parser,
-        stop=["\n Final Answer:"],
+        stop=["\nObservation:"],
         allowed_tools=tool_names,
-        handle_parsing_errors=True,
+        handle_parsing_errors=True
+        
     )
     agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools, verbose=True)
     return agent_executor.run(Question)

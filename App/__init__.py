@@ -20,6 +20,7 @@ from langchain.callbacks.manager import CallbackManager
 
 os.environ["GOOGLE_API_KEY"] = "AIzaSyBCkK86PM9H98r1YVtKmiAZY6lvLWrRyPI"
 os.environ["GOOGLE_CSE_ID"] = "733b2a2e844774208"
+os.environ["SERPER_API_KEY"] = "32d238893464f2f4b902f16ca18b6c4b492e96e7"
 os.environ["OPENAI_API_TYPE"] = "azure"
 os.environ["OPENAI_API_VERSION"] = "2023-03-15-preview"
 os.environ["OPENAI_API_BASE"] = "https://mind-benders.openai.azure.com/"
